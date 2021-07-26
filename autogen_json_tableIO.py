@@ -165,7 +165,7 @@ def get_bind(col_list, __assign_enum_fields__):
         n += 1
     return '\r\n\t\t'.join(ret)
 
-def get_class(data_type_name, io_class_name, K_COL, K_IN, cols, __assign_type_fields__, __assign_enum_fields__):
+def get_class(data_type_name, io_class_name, K_COL, K_IN, cols, __assign_type_fields__, __assign_enum_fields__, __sqlite_read_only__):
     n = 0
     col_list = []
     load = []
@@ -187,6 +187,22 @@ def get_class(data_type_name, io_class_name, K_COL, K_IN, cols, __assign_type_fi
 
     bindStr = get_bind(col_list, __assign_enum_fields__)
 
+    if __sqlite_read_only__:
+        qurey_build = '""'
+        K_COL = 'const std::string K_COL = "";'
+        qurey_bind = '''
+    virtual void bind_query(SQLite::Statement& , const std::vector<struct {0}>& , size_t ) override
+    {{
+    }}'''.format(data_type_name)
+    else:
+        qurey_build = '"CREATE TABLE if not exists " + m_name + K_COL'
+        qurey_bind = '''
+    virtual void bind_query(SQLite::Statement& query, const std::vector<struct {0}>& data, size_t nb) override
+    {{
+        const struct {0} & K_data = data[nb];
+        {1}
+    }}'''.format(data_type_name, bindStr)
+
     class_str = \
 """
 class {1} : public tableIO_t<struct {0}>{{
@@ -199,7 +215,7 @@ public:
     
 	virtual void set_name(const std::string& name) override {{
         m_name = name;
-        m_qurey_build = "CREATE TABLE if not exists " + m_name + K_COL;
+        m_qurey_build = {6};
         m_qurey_insert = "INSERT OR IGNORE INTO " + m_name + K_IN;
     }}
 
@@ -207,11 +223,7 @@ public:
 
     virtual const std::string & get_query_insert(void) const override {{ return m_qurey_insert;}};
     
-    virtual void bind_query(SQLite::Statement& query, const std::vector<struct {0}>& data, size_t nb) override
-    {{
-        const struct {0} & K_data = data[nb];
-        {4}
-    }}
+{4}
 
     //warning: not clear data inside, but append DB.data to it
     virtual void load_query(SQLite::Statement& query, std::vector<{0}>& data) override
@@ -231,7 +243,7 @@ private:
 {3}
 
 }};
-""".format(data_type_name, io_class_name, K_COL, K_IN, bindStr, load)
+""".format(data_type_name, io_class_name, K_COL, K_IN, qurey_bind, load, qurey_build)
     return class_str
 
 
@@ -277,12 +289,17 @@ if __name__ == "__main__":
     primary = None
     if "__sqlite_primary__" in json_instance:
         primary = json_instance["__sqlite_primary__"]
+    
+    if "__sqlite_read_only__" in json_instance:
+        __sqlite_read_only__ = json_instance["__sqlite_read_only__"]
+    else:
+        __sqlite_read_only__ = False
 
 
     cols, __assign_type_fields__, __assign_enum_fields__ = dict_to_cols(json_instance)
     K_IN = get_K_IN(cols)
     K_COL = get_K_COL(cols, primary)
-    class_t = get_class(data_type_name, io_class_name, K_COL, K_IN, cols, __assign_type_fields__, __assign_enum_fields__)
+    class_t = get_class(data_type_name, io_class_name, K_COL, K_IN, cols, __assign_type_fields__, __assign_enum_fields__, __sqlite_read_only__)
     # print(class_t)
 
     output_text = cpp_headers + json_cpp_headers.format(data_type_name) + namespace_head + class_t + namespace_tail

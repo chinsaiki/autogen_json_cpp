@@ -26,6 +26,7 @@ cpp_headers = \
     "__comment__xxx":"", # Add comment line
     "__sqlite_capable__":"", # enable sqlite tableIO autogen
     "__sqlite_primary__":"", # assign the primary key of sqlite, if not assigned, first existing col of [ 'id', 'date', 'mktCode', 'datetime', 'code'] will be assigned automatically.
+    "__sqlite_read_only__":true, # build sqlite read query only.
 * Script author: ChinSaiki<chinsaiki@outlook.com>
 */
 #pragma once
@@ -53,6 +54,7 @@ keep_words = [
     '__assign_set_lists__', 
     '__sqlite_capable__', 
     '__sqlite_primary__',
+    '__sqlite_read_only__',
     '__cpp_eq_eclude__'
 ]
 
