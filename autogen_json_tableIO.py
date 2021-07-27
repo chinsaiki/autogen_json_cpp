@@ -163,27 +163,56 @@ def get_bind(col_list, __assign_enum_fields__):
         else:
             ret.append('query.bind({}, K_data.{});'.format(n, col))
         n += 1
+
+
     return '\r\n\t\t'.join(ret)
+
+
+def get_load_code(cols, __assign_type_fields__, __assign_enum_fields__):
+    n=0
+    load = []
+    load_single = []
+    for col in cols:
+        if col in __assign_enum_fields__:
+            as_type = __assign_enum_fields__[col]
+            l = "K_data.{} = {}_fromString(query.getColumn({}).{}());".format(col, as_type, n, get_func(cols[col]))
+            ls = '''
+    static inline
+    {1} load_query_{0}(SQLite::Statement& query)
+    {{
+        return {1}_fromString(query.getColumn({2}).{3}());
+    }}
+            '''.format(col, as_type, n, get_func(cols[col]))
+        else:
+            if col in __assign_type_fields__:
+                as_type = '{}'.format(__assign_type_fields__[col])
+            else:
+                as_type = '{}'.format(get_type(cols[col]))
+            l = "K_data.{} = ({})query.getColumn({}).{}();".format(col, as_type, n, get_func(cols[col]))
+            ls = '''
+    static inline
+    {0} load_query_{1}(SQLite::Statement& query)
+    {{
+        return ({0})query.getColumn({2}).{3}();
+    }}
+            '''.format(as_type, col, n, get_func(cols[col]))
+        n += 1
+        load.append(l)
+        load_single.append(ls)
+
+    load = "\n\t\t".join(load)
+    load_single = "\n\t\t".join(load_single)
+    return load, load_single
+
+
 
 def get_class(data_type_name, io_class_name, K_COL, K_IN, cols, __assign_type_fields__, __assign_enum_fields__, __sqlite_read_only__):
     n = 0
     col_list = []
-    load = []
     for col in cols:
         col_list.append(col)
-        if col in __assign_enum_fields__:
-            as_type = __assign_enum_fields__[col]
-            l = "K_data.{} = {}_fromString(query.getColumn({}).{}());".format(col, as_type, n, get_func(cols[col]))
-        else:
-            if col in __assign_type_fields__:
-                as_type = '({})'.format(__assign_type_fields__[col])
-            else:
-                as_type = '({})'.format(get_type(cols[col]))
-            l = "K_data.{} = {}query.getColumn({}).{}();".format(col, as_type, n, get_func(cols[col]))
-        n += 1
-        load.append(l)
 
-    load = "\n\t\t".join(load)
+    load, load_single = get_load_code(cols, __assign_type_fields__, __assign_enum_fields__)
 
     bindStr = get_bind(col_list, __assign_enum_fields__)
 
@@ -191,13 +220,15 @@ def get_class(data_type_name, io_class_name, K_COL, K_IN, cols, __assign_type_fi
         qurey_build = '""'
         K_COL = 'const std::string K_COL = "";'
         qurey_bind = '''
-    virtual void bind_query(SQLite::Statement& , const std::vector<struct {0}>& , size_t ) override
+    static
+    void bind_query(SQLite::Statement& , const std::vector<struct {0}>& , size_t )
     {{
     }}'''.format(data_type_name)
     else:
         qurey_build = '"CREATE TABLE if not exists " + m_name + K_COL'
         qurey_bind = '''
-    virtual void bind_query(SQLite::Statement& query, const std::vector<struct {0}>& data, size_t nb) override
+    static
+    void bind_query(SQLite::Statement& query, const std::vector<struct {0}>& data, size_t nb)
     {{
         const struct {0} & K_data = data[nb];
         {1}
@@ -226,13 +257,15 @@ public:
 {4}
 
     //warning: not clear data inside, but append DB.data to it
-    virtual void load_query(SQLite::Statement& query, std::vector<{0}>& data) override
+    static
+    void load_query(SQLite::Statement& query, std::vector<{0}>& data)
     {{
         struct {0} K_data;
         {5}
         data.push_back(std::move(K_data));
     }}
 
+    {7}
 private:
 	//std::string m_name;
     std::string m_qurey_build;
@@ -243,7 +276,7 @@ private:
 {3}
 
 }};
-""".format(data_type_name, io_class_name, K_COL, K_IN, qurey_bind, load, qurey_build)
+""".format(data_type_name, io_class_name, K_COL, K_IN, qurey_bind, load, qurey_build, load_single)
     return class_str
 
 
@@ -301,6 +334,14 @@ if __name__ == "__main__":
     K_COL = get_K_COL(cols, primary)
     class_t = get_class(data_type_name, io_class_name, K_COL, K_IN, cols, __assign_type_fields__, __assign_enum_fields__, __sqlite_read_only__)
     # print(class_t)
+
+#     data_vec = ''' 
+# class {0}_vector : public std::vector<{0}>
+# {{
+# public:
+#     typedef {0}_dbTbl tableIO_t;
+# }};
+#     '''.format(data_type_name)
 
     output_text = cpp_headers + json_cpp_headers.format(data_type_name) + namespace_head + class_t + namespace_tail
     
