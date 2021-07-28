@@ -289,18 +289,6 @@ if __name__ == "__main__":
         exit(1)
 
     src_json = sys.argv[1]
-    data_type_name = os.path.basename(src_json)
-    data_type_name = data_type_name.split(".")[0]
-    io_class_name = data_type_name + "_dbTbl"
-    print("Creating Cpp file for type={}, tbl_class={}".format(data_type_name, io_class_name))
-
-    if len(sys.argv)>=3:
-        tgt_cpp = sys.argv[2]
-        if os.path.isdir(tgt_cpp):
-            tgt_cpp = tgt_cpp + "/" + io_class_name + ".h"
-    else:
-        tgt_cpp = src_json.replace(".json", "_dbTbl.h")
-
     print("reading json file:{}".format(src_json))
     with open(src_json, 'r', encoding='UTF-8') as f:
         text = f.readlines()
@@ -327,6 +315,24 @@ if __name__ == "__main__":
         __sqlite_read_only__ = json_instance["__sqlite_read_only__"]
     else:
         __sqlite_read_only__ = False
+
+    data_type_name = os.path.basename(src_json)
+    data_type_name = data_type_name.split(".")[0]
+    if __sqlite_read_only__:
+        io_class_name = data_type_name + "_dbTbl_ro"
+    else:
+        io_class_name = data_type_name + "_dbTbl"
+    print("Creating Cpp file for type={}, tbl_class={}".format(data_type_name, io_class_name))
+
+    if len(sys.argv)>=3:
+        tgt_cpp = sys.argv[2]
+        if os.path.isdir(tgt_cpp):
+            tgt_cpp = tgt_cpp + "/" + io_class_name + ".h"
+    else:
+        if __sqlite_read_only__:
+            tgt_cpp = src_json.replace(".json", "_dbTbl_ro.h")
+        else:
+            tgt_cpp = src_json.replace(".json", "_dbTbl.h")
 
 
     cols, __assign_type_fields__, __assign_enum_fields__ = dict_to_cols(json_instance)
