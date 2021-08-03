@@ -16,12 +16,14 @@ cpp_headers = \
 * Tester:    int {1}_tester();
 *
 * Json keep-word: 
+    "__user_defined_include__" : ["xxx.h"], # Require to include files in list.
     "__default_value_fields__": [], # Take value in .json file as the default value of cpp variable
     "__optional_fields__": [], # Not require to present to .json file, but always in cpp struct
     "__assign_type_fields__": {{"field":"cpp-type"}}, # Assign specal cpp-type of field, but not infer automatically as default.
     "__assign_enum_fields__": {{"field":"enum-type"}}, # Assign specal enum-type of field, but not infer automatically as default.
                               enum-type need have implemented <enum-type>_toSting() & <enum-type>_fromString() functions.
     "__assign_set_lists__": [], # Take list in .json file as std::set<>, but not std::vector<> as default
+    "__assign_map_fields__": [], # Take fields in .json file as std::map<std::string, TYPE_AUTO>.
     "__cpp_eq_eclude__":[],     # List of variables not involved in equal compare.
     "__comment__xxx":"", # Add comment line
     "__sqlite_capable__":true/false, # enable sqlite tableIO autogen
@@ -44,14 +46,17 @@ json_cpp_headers = cpp_headers + \
 #include <set>
 #include <list>
 #include <vector>
+//__user_defined_include__:
 """
 
 keep_words = [
+    '__user_defined_include__',
     '__default_value_fields__', 
     '__optional_fields__', 
     '__assign_type_fields__', 
     '__assign_enum_fields__',
     '__assign_set_lists__', 
+    '__assign_map_fields__',
     '__sqlite_capable__', 
     '__sqlite_primary__',
     '__sqlite_read_only__',
@@ -117,7 +122,14 @@ def dict_to_struct(cpp_vari, json_vari, type_name, json_dict, namespace_list = [
         print("use __assign_set_lists__ = {}".format(__assign_set_lists__))
     else:
         __assign_set_lists__ = []
+
+    if '__assign_map_fields__' in json_dict:
+        __assign_map_fields__ = json_dict['__assign_map_fields__']
+        print("use __assign_map_fields__ = {}".format(__assign_map_fields__))
+    else:
+        __assign_map_fields__ = []
     
+        
         
     for key_name in json_dict:
         if key_name in keep_words:
@@ -189,20 +201,80 @@ def dict_to_struct(cpp_vari, json_vari, type_name, json_dict, namespace_list = [
             else:
                 to_str.append('{}["{}"] = {}.{};'.format(json_vari, key_name, cpp_vari, key_name))
         elif isinstance(key_value, dict):
+            key_type = key_name+"_t"
             sub_json_vari = json_vari+"_"+key_name
             sub_type = key_name+"_t"
-            sub_str, sub_from, sub_to = dict_to_struct(cpp_vari+"."+key_name, sub_json_vari, sub_type, key_value, namespace_list+[sub_type])
+            sub_str, sub_from, sub_to, sub_key_name, sub_key_type = dict_to_struct(cpp_vari+"."+key_name, sub_json_vari, sub_type, key_value, namespace_list+[sub_type])
+            if key_name not in __assign_map_fields__:
 
-            sub_str = ["\t"+x for x in sub_str]
-            sub_str.append("\t{}_t {};".format(key_name, key_name))
-            main_str.extend(sub_str)
+                sub_str = ["\t"+x for x in sub_str]
+                sub_str.append("\t{}_t {};".format(key_name, key_name))
+                main_str.extend(sub_str)
 
-            from_str.append('const nlohmann::json& {} = {}{}["{}"];'.format(sub_json_vari, json_vari, json_vari_suffix, key_name))
-            from_str.extend(sub_from)
+                from_str.append('const nlohmann::json& {} = {}{}["{}"];'.format(sub_json_vari, json_vari, json_vari_suffix, key_name))
+                from_str.extend(sub_from)
 
-            to_str.append('nlohmann::json {};'.format(sub_json_vari))
-            to_str.extend(sub_to)
-            to_str.append('{}["{}"] = {};'.format(json_vari, key_name, sub_json_vari))
+                to_str.append('nlohmann::json {};'.format(sub_json_vari))
+                to_str.extend(sub_to)
+                to_str.append('{}["{}"] = {};'.format(json_vari, key_name, sub_json_vari))
+            else:
+                sub_str_ = [x for x in sub_str[1:-2]]
+                if len(sub_str_) == 0:
+                    main_str.append("\tstd::map<std::string, {}> {};".format(sub_key_type, key_name))
+                    sub_str = []
+                    sub_str.append('try{')
+                    sub_str.append('\t{0}.{1}.clear();'.format(cpp_vari, key_name))
+                    sub_str.append('\tfor(auto& {0}_{1} : {1}.at("{0}").items()){{'.format(key_name, json_vari))
+                    sub_str.append('\t\tconst std::string& _{0}_str = {0}_{1}.key();'.format(key_name, json_vari))
+                    sub_str.append('\t\t{0}.{1}[_{1}_str] = {1}_{2}.value().get<{3}>();'.format(cpp_vari, key_name, json_vari, sub_key_type))
+                    sub_str.append('\t}')
+                    if key_name not in __optional_fields__:
+                        sub_str.append("}catch(const std::exception& e){")
+                        sub_str.append('\tERR("parse field {{:}} fail! e={{:}}", "{}", e.what());'.format(key_name))
+                        sub_str.append('\tthrow e;')
+                    else:
+                        sub_str.append("}catch(...){")
+                    sub_str.append("}")
+                    from_str.extend(sub_str)
+
+                    to_str.append('{}["{}"] = {}.{};'.format(json_vari, key_name, cpp_vari, key_name))
+
+                else:
+                    main_str.extend(sub_str_)
+                    main_str.append("\tstd::map<std::string, {}::{}> {};".format("::".join(namespace_list), sub_key_name+"_t", key_name))
+
+                    sub_str = []
+                    sub_str.append('try{')
+                    sub_str.append('\tconst nlohmann::json& {} = {}{}.at("{}");'.format(sub_json_vari, json_vari, json_vari_suffix, key_name))
+                    sub_str.append('\tfor(auto& {0}_x: {0}.items()){{'.format(sub_json_vari))
+
+                    sub_str.append(f'\t\tstd::string {sub_key_name}_map_key = {sub_json_vari}_x.key();')
+                    sub_str.append(f'\t\t{"::".join(namespace_list)}::{sub_key_name+"_t"} {sub_key_name};')
+                    sub_type_name = sub_from[0].split("=")[0]
+                    sub_str.append(f'\t\t{sub_type_name} = {sub_json_vari}_x.value();')
+                    sub_from = [x.replace(cpp_vari+"."+key_name+".", "") for x in sub_from[1:]]
+                    sub_str.extend(["\t\t" + x for x in sub_from])
+                    sub_str.append(f'\t\t{cpp_vari+"."+key_name}[{sub_key_name}_map_key] = std::move({sub_key_name});')
+                    sub_str.append('\t}')
+                    if key_name not in __optional_fields__:
+                        sub_str.append("}catch(const std::exception& e){")
+                        sub_str.append('\tERR("parse field {{:}} fail! e={{:}}", "{}", e.what());'.format(key_name))
+                        sub_str.append('\tthrow e;')
+                    else:
+                        sub_str.append("}catch(...){")
+                    sub_str.append("}")
+                    from_str.extend(sub_str)
+
+                    print("\n".join(sub_to))
+
+                    to_str.append('nlohmann::json {};'.format(sub_json_vari))
+                    to_str.append(f'for (auto& map_v : {cpp_vari+"."+key_name}){{')
+                    sub_to = ["\t" + x.replace(cpp_vari+"."+key_name+"."+sub_key_name, "map_v.second") for x in sub_to]
+                    sub_to[-1] = sub_to[-1].replace('"'+sub_key_name+'"', "map_v.first")
+                    to_str.extend(sub_to)
+                    to_str.append(f'}}')
+                    to_str.append('{}["{}"] = {};'.format(json_vari, key_name, sub_json_vari))
+                continue
         elif isinstance(key_value, list):
             if len(key_value)==0:
                 print("unable to determin type of list({}:{})".format(key_name, key_value))
@@ -256,7 +328,7 @@ def dict_to_struct(cpp_vari, json_vari, type_name, json_dict, namespace_list = [
                     sub_json_vari = json_vari+"_"+key_name
                     sub_cpp_vari = cpp_vari.replace('.', '_')+"_"+key_name
                     sub_type = key_name+"_t"
-                    sub_str, sub_from, sub_to = dict_to_struct(sub_cpp_vari, sub_json_vari, sub_type, key_value, namespace_list+[sub_type], ".value()")
+                    sub_str, sub_from, sub_to, _, _ = dict_to_struct(sub_cpp_vari, sub_json_vari, sub_type, key_value, namespace_list+[sub_type], ".value()")
 
                     sub_str = ["\t"+x for x in sub_str]
                     main_str.extend(sub_str)
@@ -315,7 +387,7 @@ def dict_to_struct(cpp_vari, json_vari, type_name, json_dict, namespace_list = [
             exit(-1)
 
     main_str.append("};")
-    return main_str, from_str, to_str
+    return main_str, from_str, to_str, key_name, key_type
 
 def get_eq(type_name, json_dict):
     cols_list = []
@@ -427,9 +499,14 @@ if __name__ == "__main__":
 
     cpp_v = type_name + "_var"
     json_v = "json_var"
-    cpp_struct, cpp_from_str, cpp_to_str = dict_to_struct(cpp_v, json_v, type_name, json_instance, [type_name])
+    cpp_struct, cpp_from_str, cpp_to_str, _, _ = dict_to_struct(cpp_v, json_v, type_name, json_instance, [type_name])
     output = []
 
+    __user_defined_include__ = []
+    if '__user_defined_include__' in json_instance:
+        __user_defined_include__ = json_instance['__user_defined_include__']
+    for h in __user_defined_include__:
+        json_cpp_headers += '#include "{}"\n'.format(h)
     json_cpp_headers = json_cpp_headers.format(src_json, type_name)
     output.append(json_cpp_headers)
 
@@ -472,6 +549,20 @@ if __name__ == "__main__":
         cpp_to.append("\t}")
         cpp_to = "\n".join(cpp_to)
         # print(cpp_to)
+        output.append(cpp_to)
+
+        
+        print("/* to string */")
+        output.append("\t/* to string */")
+        cpp_to = ['\tstatic bool to_str(std::string& str, const {}& {}){{'.format(type_name, cpp_v)]
+        cpp_to.append("\t\tnlohmann::json json_var;")
+        cpp_to.append("\t\tif (!to_json(json_var, {})){{".format(cpp_v))
+        cpp_to.append("\t\t\treturn false;")
+        cpp_to.append("\t\t}")
+        cpp_to.append("\t\tstr = json_var.dump(4, ' ', false, nlohmann::json::error_handler_t::replace);")
+        cpp_to.append("\t\treturn true;")
+        cpp_to.append("\t}")
+        cpp_to = "\n".join(cpp_to)
         output.append(cpp_to)
 
         cpp_eq = get_eq(type_name, json_instance)
