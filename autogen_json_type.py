@@ -452,7 +452,7 @@ def get_eq(type_name, json_dict):
 
 def get_assign(type_name):
     opt_assign = """
-    {0}& {0}::operator =(const nlohmann::json & json_var)
+    {0}& operator =(const nlohmann::json & json_var)
     {{
         {0}::from_json(json_var, *this);
         return *this;
