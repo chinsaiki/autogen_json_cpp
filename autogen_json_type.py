@@ -201,14 +201,19 @@ def dict_to_struct(cpp_vari, json_vari, type_name, json_dict, namespace_list = [
             else:
                 to_str.append('{}["{}"] = {}.{};'.format(json_vari, key_name, cpp_vari, key_name))
         elif isinstance(key_value, dict):
-            key_type = key_name+"_t"
             sub_json_vari = json_vari+"_"+key_name
-            sub_type = key_name+"_t"
+            if key_name in __assign_type_fields__:
+                key_type = __assign_type_fields__[key_name]
+            else:
+                key_type = key_name+"_t"
+            sub_type = key_type
             sub_str, sub_from, sub_to, sub_key_name, sub_key_type = dict_to_struct(cpp_vari+"."+key_name, sub_json_vari, sub_type, key_value, namespace_list+[sub_type])
+            if key_name in __assign_type_fields__:
+                sub_str = []
             if key_name not in __assign_map_fields__:
 
                 sub_str = ["\t"+x for x in sub_str]
-                sub_str.append("\t{}_t {};".format(key_name, key_name))
+                sub_str.append("\t{} {};".format(key_type, key_name))
                 main_str.extend(sub_str)
 
                 from_str.append('const nlohmann::json& {} = {}{}["{}"];'.format(sub_json_vari, json_vari, json_vari_suffix, key_name))
