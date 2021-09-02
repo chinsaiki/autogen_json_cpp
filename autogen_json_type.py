@@ -193,8 +193,8 @@ def dict_to_struct(cpp_vari, json_vari, type_name, json_dict, namespace_list = [
             if key_name not in __optional_fields__:
                 from_str.append("}else{")
                 # from_str.append('\tERR("\\"{}\\" not found in json!");'.format(key_name))
+                # from_str.append('\treturn false;')
                 from_str.append('\tthrow std::runtime_error("\\"{}\\" not found in json!");'.format(key_name))
-                from_str.append('\treturn false;')
             from_str.append("}")
 
             if key_name in __assign_enum_fields__:
