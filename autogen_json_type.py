@@ -460,7 +460,10 @@ def get_assign(type_name):
     opt_assign = """
     {0}& operator =(const nlohmann::json & json_var)
     {{
-        {0}::from_json(json_var, *this);
+        bool ok = {0}::from_json(json_var, *this);
+        if (!ok){{
+            throw std::runtime_error("assign {0} error!");
+        }}
         return *this;
     }}
     """.format(type_name)
