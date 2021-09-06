@@ -91,7 +91,7 @@ def determin_default_value(value):
     elif isinstance(value, float):
         return "%.f" % value
 
-def dict_to_struct(cpp_vari, json_vari, type_name, json_dict, namespace_list = [], json_vari_suffix=''):
+def dict_to_struct(cpp_vari, json_vari, type_name, json_dict, namespace_list = [], json_vari_suffix='', parent_is_assigned_type = False):
     main_str = ["struct {} {{".format(type_name)]
     from_str = []
     to_str = []
@@ -208,7 +208,13 @@ def dict_to_struct(cpp_vari, json_vari, type_name, json_dict, namespace_list = [
             else:
                 key_type = key_name+"_t"
             sub_type = key_type
-            sub_str, sub_from, sub_to, sub_key_name, sub_key_type = dict_to_struct(cpp_vari+"."+key_name, sub_json_vari, sub_type, key_value, namespace_list+[sub_type])
+            if len(key_value):
+                sub_str, sub_from, sub_to, sub_key_name, sub_key_type = dict_to_struct(cpp_vari+"."+key_name, sub_json_vari, sub_type, key_value, namespace_list+[sub_type], parent_is_assigned_type = key_name in __assign_type_fields__)
+            else:
+                sub_from = [
+                    f"{cpp_vari}.{key_name} = {sub_json_vari};"
+                ]
+                sub_to = []
             if key_name in __assign_type_fields__:
                 sub_str = []
             if key_name not in __assign_map_fields__:
@@ -255,7 +261,10 @@ def dict_to_struct(cpp_vari, json_vari, type_name, json_dict, namespace_list = [
                     sub_str.append('\tfor(auto& {0}_x: {0}.items()){{'.format(sub_json_vari))
 
                     sub_str.append(f'\t\tstd::string {sub_key_name}_map_key = {sub_json_vari}_x.key();')
-                    sub_str.append(f'\t\t{"::".join(namespace_list)}::{sub_key_name+"_t"} {sub_key_name};')
+                    if parent_is_assigned_type:
+                        sub_str.append(f'\t\t{namespace_list[-1]}::{sub_key_name+"_t"} {sub_key_name};')
+                    else:
+                        sub_str.append(f'\t\t{"::".join(namespace_list)}::{sub_key_name+"_t"} {sub_key_name};')
                     sub_type_name = sub_from[0].split("=")[0]
                     sub_str.append(f'\t\t{sub_type_name} = {sub_json_vari}_x.value();')
                     sub_from = [x.replace(cpp_vari+"."+key_name+".", "") for x in sub_from[1:]]
