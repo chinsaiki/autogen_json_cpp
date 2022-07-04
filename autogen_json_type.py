@@ -260,7 +260,7 @@ def dict_to_struct(cpp_vari, json_vari, type_name, json_dict, namespace_list = [
                     sub_str.append('\tconst nlohmann::json& {} = {}{}.at("{}");'.format(sub_json_vari, json_vari, json_vari_suffix, key_name))
                     sub_str.append('\tfor(auto& {0}_x: {0}.items()){{'.format(sub_json_vari))
 
-                    sub_str.append(f'\t\tstd::string {sub_key_name}_map_key = {sub_json_vari}_x.key();')
+                    sub_str.append(f'\t\tconst std::string& {sub_key_name}_map_key = {sub_json_vari}_x.key();')
                     if parent_is_assigned_type:
                         sub_str.append(f'\t\t{namespace_list[-1]}::{sub_key_name+"_t"} {sub_key_name};')
                     else:
