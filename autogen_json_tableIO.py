@@ -352,6 +352,6 @@ if __name__ == "__main__":
     output_text = cpp_headers + json_cpp_headers.format(data_type_name) + namespace_head + class_t + namespace_tail
     
     if tgt_cpp is not None:
-        with open(tgt_cpp, 'w+') as fo:
+        with open(tgt_cpp, 'w+', encoding='UTF-8') as fo:
             fo.write(output_text)
 

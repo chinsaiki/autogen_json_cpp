@@ -748,7 +748,7 @@ inline int {3}_tester() {{
 
     output = '\n'.join(output)
     if tgt_cpp is not None:
-        with open(tgt_cpp, 'w+') as fo:
+        with open(tgt_cpp, 'w+', encoding='UTF-8') as fo:
             fo.write(output)
 
     print("output cpp .h = {}".format(tgt_cpp))
